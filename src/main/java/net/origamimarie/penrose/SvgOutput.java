@@ -1,17 +1,39 @@
 package net.origamimarie.penrose;
 
+import java.awt.*;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
 public class SvgOutput {
 
-  public static String pointListsToSvg(List<Point[]> pointLists, double scaleFactor) {
+  public static void pointListsToSvgFile(File file, List<Point[]> pointLists, double scaleFactor, Color color) throws IOException {
+    BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+    pointListsToSvg(writer, pointLists, scaleFactor, color);
+    writer.close();
+  }
+
+  public static String pointListsToSvg(List<Point[]> pointLists, double scaleFactor, Color color) {
+    try {
+      StringBuilder sb = new StringBuilder();
+      pointListsToSvg(sb, pointLists, scaleFactor, color);
+      return sb.toString();
+    } catch (IOException ignored) {
+      // Really, this is a StringBuffer, we're not going to get an IOException.
+      return "";
+    }
+  }
+
+  public static void pointListsToSvg(Appendable ap, List<Point[]> pointLists, double scaleFactor, Color color) throws IOException {
     List<Point[]> scaledPoints = new ArrayList<>(pointLists.size());
     for(Point[] points : pointLists) {
       Point[] scaled = new Point[points.length];
       scaledPoints.add(scaled);
       for(int i = 0; i < points.length; i++) {
-        scaled[i] = new Point(points[i].x * -scaleFactor, points[i].y * scaleFactor);
+        scaled[i] = new Point(points[i].x * scaleFactor, points[i].y * -scaleFactor);
       }
     }
     Point[] minAndMax = new Point[2];
@@ -21,13 +43,13 @@ public class SvgOutput {
     max = max.minus(min);
     Point offset = min.times(-1);
 
-    StringBuilder sb = new StringBuilder();
-    appendHeader(sb, max);
+    appendHeader(ap, max);
+    float hue = 0.0f;
     for(Point[] points : scaledPoints) {
-      appendPolygon(sb, points, offset);
+      appendPolygon(ap, points, offset, (color == null) ? Color.getHSBColor(hue, 0.3f, 1.0f) : color);
+      hue = hue + 0.025f;
     }
-    appendFooter(sb);
-    return sb.toString();
+    appendFooter(ap);
   }
 
   private static void getMinAndMax(List<Point[]> pointLists, Point[] minAndMax) {
@@ -48,28 +70,35 @@ public class SvgOutput {
     minAndMax[1] = new Point(maxX, maxY);
   }
 
-  private static void appendHeader(StringBuilder sb, Point maxes) {
-    sb.append("<svg height=\"").
-            append((int) maxes.y).append("\" width=\"").
-            append((int) maxes.x).append("\" version=\"1.1\"\n").
-            append("     xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">\n").
-            append("  <g fill-rule=\"nonzero\" fill=\"cyan\" stroke=\"blue\" stroke-width=\"1\" >\n");
+  private static void appendHeader(Appendable ap, Point maxes) throws IOException {
+    ap.append("<?xml version=\"1.0\" standalone=\"no\"?>").
+            append("<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">").
+            append("<svg height=\"").
+            append(String.valueOf(maxes.y)).append("\" width=\"").
+            append(String.valueOf(maxes.x)).append("\" version=\"1.1\"\n").
+            append("     xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">\n");
   }
 
-  private static void appendFooter(StringBuilder sb) {
-    sb.append("  </g>\n").
-            append("</svg>\n");
+  private static void appendFooter(Appendable ap) throws IOException {
+    ap.append("</svg>\n");
   }
 
-  private static void appendPolygon(StringBuilder sb, Point[] points, Point offset) {
-    sb.append("    <path d=\"");
-    sb.append("M");
+  private static void appendPolygon(Appendable ap, Point[] points, Point offset, Color color) throws IOException {
+    ap.append("  <g fill-rule=\"nonzero\" fill=\"#").
+            append(colorToHex(color)).
+            append("\" stroke=\"black\" stroke-width=\"1\" >\n");
+    ap.append("    <path d=\"");
+    ap.append("M");
     for(Point point : points) {
-      sb.append(" ").append(point.x + offset.x).append(",").append(point.y + offset.y).append(" L");
+      ap.append(" ").append(String.valueOf(point.x + offset.x)).append(",").append(String.valueOf(point.y + offset.y)).append(" L");
     }
     Point point = points[0];
-    sb.append(point.x + offset.x).append(",").append(point.y + offset.y).append(" z ");
-    sb.append("\" />\n");
+    ap.append(String.valueOf(point.x + offset.x)).append(",").append(String.valueOf(point.y + offset.y)).append(" z ");
+    ap.append("\" />\n").append("  </g>\n");
+  }
+
+  private static String colorToHex(Color c) {
+    return String.format("%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
   }
 
 }
