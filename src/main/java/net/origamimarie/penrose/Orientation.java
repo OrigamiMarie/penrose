@@ -1,12 +1,10 @@
 package net.origamimarie.penrose;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class Orientation {
-  public final Map<V, List<Integer>> vWedgeLocations;
+  public final Map<Vwedge, Integer> vWedgeLocations;
   public final Point[] relativePoints;
 
   public Orientation() {
@@ -16,13 +14,8 @@ public class Orientation {
 
   public Orientation rotateOrientationCounterclockwise() {
     Orientation o = new Orientation();
-    for(V v : vWedgeLocations.keySet()) {
-      List<Integer> list = vWedgeLocations.get(v);
-      List<Integer> oList = new ArrayList<>();
-      o.vWedgeLocations.put(v, oList);
-      for(Integer i : list) {
-        oList.add(Vertex.normalizeWedgeNumber(i+1));
-      }
+    for(Vwedge vwedge : vWedgeLocations.keySet()) {
+      o.vWedgeLocations.put(vwedge, Vwedge.normalizeWedgeNumber(vWedgeLocations.get(vwedge)+1));
     }
     return o;
   }
@@ -31,7 +24,7 @@ public class Orientation {
     System.arraycopy(relativePoints, 0, this.relativePoints, 0, 4);
   }
 
-  public List<Integer> getWedgeLocations(V v) {
-    return vWedgeLocations.get(v);
+  public Integer getWedgeLocation(Vwedge vwedge) {
+    return vWedgeLocations.get(vwedge);
   }
 }

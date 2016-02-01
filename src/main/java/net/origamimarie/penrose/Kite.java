@@ -1,25 +1,29 @@
 package net.origamimarie.penrose;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class Kite extends Shape {
 
   public static final V[] KITE_VS = new V[]{V.K, V.L, V.M, V.N};
-
-  // [V.shapeBasedNumber][orientation where this number is the most clockwise part of that V]
-  // That's sort of confusing.  Sorry.
-  private static Orientation[][] orientationsByClockwiseV;
+  public static final Vwedge[] KITE_VWEDGES = new Vwedge[]{Vwedge.K0, Vwedge.K1, Vwedge.L0, Vwedge.L1, Vwedge.M0, Vwedge.M1, Vwedge.M2, Vwedge.M3, Vwedge.N0, Vwedge.N1};
+  // [Vwedge.shapeBaseNumber][orientation where this vwedge is in this vwedge location]
+  private static Orientation[][] orientationsByVwedge;
 
   static {
     List<Orientation> orientations = new ArrayList<>(10);
     // Populate the orientations
     Orientation o = new Orientation();
-    o.vWedgeLocations.put(V.K, Arrays.asList(0, 1));
-    o.vWedgeLocations.put(V.L, Arrays.asList(7, 8));
-    o.vWedgeLocations.put(V.M, Arrays.asList(4, 5, 6, 7));
-    o.vWedgeLocations.put(V.N, Arrays.asList(3, 4));
+    o.vWedgeLocations.put(Vwedge.K0, 0);
+    o.vWedgeLocations.put(Vwedge.K1, 1);
+    o.vWedgeLocations.put(Vwedge.L0, 7);
+    o.vWedgeLocations.put(Vwedge.L1, 8);
+    o.vWedgeLocations.put(Vwedge.M0, 4);
+    o.vWedgeLocations.put(Vwedge.M1, 5);
+    o.vWedgeLocations.put(Vwedge.M2, 6);
+    o.vWedgeLocations.put(Vwedge.M3, 7);
+    o.vWedgeLocations.put(Vwedge.N0, 3);
+    o.vWedgeLocations.put(Vwedge.N1, 4);
 
     Point[] baseVertices = new Point[4];
     baseVertices[V.K.shapeBasedNumber] = new Point(0.0, 0.0);
@@ -51,18 +55,16 @@ public class Kite extends Shape {
       orientations.add(o);
     }
 
-    orientationsByClockwiseV = new Orientation[4][Vertex.WEDGE_COUNT];
+    orientationsByVwedge = new Orientation[10][Vertex.WEDGE_COUNT];
     for(Orientation orientation : orientations) {
-      for(V v : KITE_VS) {
-        // Because nothing gets shuffled during a rotation and all lists started with the most clockwise,
-        // these rotated orientations will start with the most clockwise too.
-        orientationsByClockwiseV[v.shapeBasedNumber][orientation.getWedgeLocations(v).get(0)] = orientation;
+      for(Vwedge vwedge : KITE_VWEDGES) {
+        orientationsByVwedge[vwedge.shapeBasedNumber][orientation.getWedgeLocation(vwedge)] = orientation;
       }
     }
   }
 
-  protected Orientation getOrientation(V v, int clockwiseMostWedge) {
-    return orientationsByClockwiseV[v.shapeBasedNumber][clockwiseMostWedge];
+  protected Orientation getOrientation(Vwedge vwedge, int vwedgeLocation) {
+    return orientationsByVwedge[vwedge.shapeBasedNumber][vwedgeLocation];
   }
 
   protected V[] getVs() {

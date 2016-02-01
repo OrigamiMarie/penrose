@@ -33,7 +33,9 @@ public class SvgOutput {
       Point[] scaled = new Point[points.length];
       scaledPoints.add(scaled);
       for(int i = 0; i < points.length; i++) {
-        scaled[i] = new Point(points[i].x * scaleFactor, points[i].y * -scaleFactor);
+        if(points[i] != null) {
+          scaled[i] = new Point(points[i].x * scaleFactor, points[i].y * -scaleFactor);
+        }
       }
     }
     Point[] minAndMax = new Point[2];
@@ -46,8 +48,10 @@ public class SvgOutput {
     appendHeader(ap, max);
     float hue = 0.0f;
     for(Point[] points : scaledPoints) {
-      appendPolygon(ap, points, offset, (color == null) ? Color.getHSBColor(hue, 0.3f, 1.0f) : color);
-      hue = hue + 0.025f;
+      if(points[0] != null && points[1] != null && points[2] != null && points[3] != null) {
+        appendPolygon(ap, points, offset, (color == null) ? Color.getHSBColor(hue, 1.0f, 1.0f) : color);
+        hue = hue + 0.025f;
+      }
     }
     appendFooter(ap);
   }
@@ -59,10 +63,12 @@ public class SvgOutput {
     double maxY = Integer.MIN_VALUE;
     for(Point[] pointList : pointLists) {
       for(Point point : pointList) {
-        minX = Math.min(minX, point.x);
-        minY = Math.min(minY, point.y);
-        maxX = Math.max(maxX, point.x);
-        maxY = Math.max(maxY, point.y);
+        if(point != null) {
+          minX = Math.min(minX, point.x);
+          minY = Math.min(minY, point.y);
+          maxX = Math.max(maxX, point.x);
+          maxY = Math.max(maxY, point.y);
+        }
       }
     }
 
@@ -86,7 +92,8 @@ public class SvgOutput {
   private static void appendPolygon(Appendable ap, Point[] points, Point offset, Color color) throws IOException {
     ap.append("  <g fill-rule=\"nonzero\" fill=\"#").
             append(colorToHex(color)).
-            append("\" stroke=\"black\" stroke-width=\"1\" >\n");
+            append("\" fill-opacity=\"0.3\" stroke=\"black\" stroke-width=\"0.5\" >\n");
+            //append("\" fill-opacity=\"0.3\" >\n");
     ap.append("    <path d=\"");
     ap.append("M");
     for(Point point : points) {
