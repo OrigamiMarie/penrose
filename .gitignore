@@ -1,0 +1,5 @@
+*.svg
+build/
+.idea/
+*.iml
+
