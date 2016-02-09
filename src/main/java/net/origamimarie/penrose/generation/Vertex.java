@@ -78,6 +78,7 @@ public class Vertex implements Comparable<Vertex> {
   private List<Vwedge[]> currentPossibleVwedges;
   private int openWedges;
   private boolean dead;
+  private Vertex replacement = null;
 
   private Point location = null;
   private Set<Vertex> allTheLiveVertices = null;
@@ -90,6 +91,9 @@ public class Vertex implements Comparable<Vertex> {
     vwedges = new Vwedge[]{null, null, null, null, null, null, null, null, null, null};
     dead = false;
     currentPossibleVwedges = new ArrayList<>(allVwedgeConfigurations);
+    allTheLiveVertices = new HashSet<>();
+    pointSet = new Point.PointSet();
+    pointsToVertices = new HashMap<>();
   }
 
   public boolean isFull() {
@@ -112,6 +116,16 @@ public class Vertex implements Comparable<Vertex> {
     return vwedgesCopy;
   }
 
+  public Vertex calculateReplacement() {
+    if(!dead) {
+      return this;
+    } else {
+      return replacement.calculateReplacement();
+    }
+  }
+
+  // The point here is to make queueing nice.
+  // The fewer open wedges, the more interested we are in trying to fill it in.
   @Override
   public int compareTo(Vertex v) {
     return openWedges - v.openWedges;
@@ -145,6 +159,11 @@ public class Vertex implements Comparable<Vertex> {
     // Help the shape figure out its orientation.
     shape.setOrientation(vwedge, vwedgeLocation);
     // Add the shape to this vertex, which also adds this vertex to the shape and recursively merges vertices.
+    for(Vertex vertex : shape.getVertices()) {
+      vertex.allTheLiveVertices = this.allTheLiveVertices;
+      vertex.pointSet = this.pointSet;
+      vertex.pointsToVertices = this.pointsToVertices;
+    }
     addShapeWithOrientation(shape, vwedge);
 
     // This prevents deeply nested autoFillAll loops,
@@ -157,25 +176,48 @@ public class Vertex implements Comparable<Vertex> {
   // Only call this if the orientation is set on the shape already.
   // Probably an NPE if you mess up.
   public void addShapeWithOrientation(Shape shape, Vwedge vwedge) {
+    // Need to call replace on just this one,
+    // so that the location can get set for all of the vertices on this shape.
+    mergeVertexIntoThis(shape.getVertex(vwedge));
+    shape.replaceVertex(shape.getVertex(vwedge), this);
+    for(Vertex vertex : shape.getVertices()) {
+      vertex.findLocationCopyAndMerge();
+    }
+    /*
     // The shape already has a vertex in the spot where this one should go.
     // So let's get that vertex, merge it to this, and replace it.
-    Vertex previousVertex = shape.getVertex(vwedge);
+    Vertex previousVertex = shape.getVertex(vwedge).calculateReplacement();
     if(previousVertex != this) {
       mergeVertexIntoThis(previousVertex);
+    }*/
+  }
+
+  private void findLocationCopyAndMerge() {
+    Point similarExisting = pointSet.getSimilarPoint(location);
+    if(similarExisting != null && similarExisting != location) {
+      // This means there's a vertex to merge with.
+      Vertex vertexToMergeWith = pointsToVertices.get(similarExisting);
+      // This is signing up to be eaten (and declared dead) by that vertex.
+      vertexToMergeWith.mergeVertexIntoThis(this);
+    } else {
+      // This point isn't in our lists yet, so add it.
+      pointSet.addPoint(location);
+      allTheLiveVertices.add(this);
+      pointsToVertices.put(location, this);
     }
   }
 
   private void mergeVertexIntoThis(Vertex vertex) {
-    if(vertex.dead) {
-      log.debug("uh-oh");
-    }
     // It's dead.  This ate it.
     vertex.dead = true;
+    vertex.replacement = this;
     allTheLiveVertices.remove(vertex);
 
     Set<Shape> shapesToReplaceVerticesIn = new HashSet<>();
     for(int i = 0; i < WEDGE_COUNT; i++) {
       if(vertex.wedges[i] != null && this.wedges[i] != null && vertex.wedges[i] != this.wedges[i]) {
+        // TODO remove when debugged.
+        dumpToSvgDebug();
         throw new IllegalArgumentException("Trying to merge two vertices that have incompatible wedges.  ");
       }
       if(vertex.wedges[i] != null) {
@@ -186,44 +228,11 @@ public class Vertex implements Comparable<Vertex> {
       }
     }
     for(Shape shape : shapesToReplaceVerticesIn) {
-      shape.replaceVertex(vertex, this);
-    }
-    // Only possibleVwedges that worked with both.
-    this.currentPossibleVwedges = ListUtils.intersection(this.currentPossibleVwedges, vertex.currentPossibleVwedges);
-    if(this.location == null) {
-      this.location = vertex.location;
-      this.allTheLiveVertices = vertex.allTheLiveVertices;
-      this.pointSet = vertex.pointSet;
-      this.pointsToVertices = vertex.pointsToVertices;
+      shape.replaceVertex(vertex, this.calculateReplacement());
     }
 
-    // Now go find all of the other vertices that need merging.
-    // Every time you merge a vertex, there is a chance that there will be news about
-    // another pair of vertices that are actually the same vertex.
-    Shape clockwise;
-    Shape counterclockwise;
-    Vertex v1;
-    Vertex v2;
-    // This vertex could get consumed during the loop, so check for its death each time around.
-    for(int i = 0; i < WEDGE_COUNT && !dead; i++) {
-      clockwise = wedges[i];
-      counterclockwise = wedges[normalizeWedgeNumber(i+1)];
-      // This means two different shapes are next to each other.
-      if(clockwise != null && counterclockwise != null && clockwise != counterclockwise) {
-        // They should have this vertex and one other vertex in common.
-        v1 = clockwise.getVertexCounterclockwiseOf(this);
-        v2 = counterclockwise.getVertexClockwiseOf(this);
-        // If these aren't the same yet, they should be merged.
-        if(v1 == null || v2 == null) {
-          // TODO remove when debugged.
-          dumpToSvgDebug();
-          log.debug("oh-oh");
-        }
-        if(v1 != v2) {
-          v1.mergeVertexIntoThis(v2);
-        }
-      }
-    }
+    // Only possibleVwedges that worked with both.
+    this.currentPossibleVwedges = ListUtils.intersection(this.currentPossibleVwedges, vertex.currentPossibleVwedges);
   }
 
   public void dumpToSvgDebug() {
@@ -233,7 +242,7 @@ public class Vertex implements Comparable<Vertex> {
       allVertexPoints.add(vertex.getLocation());
     }
     try {
-      SvgOutput.pointListsToSvgFile(file, getAllShapePoints(), 40, Color.MAGENTA, true, allVertexPoints);
+      SvgOutput.pointListsToSvgFile(file, getAllShapePoints(), 40, Color.MAGENTA, 0.4, true, allVertexPoints);
     } catch (Exception ignored) {}
 
   }
@@ -260,6 +269,7 @@ public class Vertex implements Comparable<Vertex> {
         if(!tempVertex.isDead() && !tempVertex.isFull()) {
           List<Shape> tempAddedShapes = tempVertex.autoFillShapes();
           addedShapes.addAll(tempAddedShapes);
+
         }
       }
     } while(addedShapes.size() > 0 && !dead);
@@ -291,17 +301,15 @@ public class Vertex implements Comparable<Vertex> {
     }
 
     List<Shape> addedShapes = new ArrayList<>();
-    // We may stop this loop partway through due to self being dead.
-    // Since the shapes we're adding are doing their own recursive vertex merging,
-    // this vertex may lose the competition mid-loop.
-    for(int i = 0; i < WEDGE_COUNT && !dead; i++) {
+    Vertex thisOrReplacement;
+    for(int i = 0; i < WEDGE_COUNT; i++) {
+      thisOrReplacement = calculateReplacement();
       // Need one last check of vwedges[i] there because we may have filled it just now.
-      // Also, we may be dead.
-      if(justOneVwedge[i] && vwedges[i] == null && !dead) {
+      if(justOneVwedge[i] && vwedges[i] == null) {
         Vwedge vwedge = certainVwedges[i];
         Shape shape = Shape.makeNew(vwedge.associatedShape);
         addedShapes.add(shape);
-        addShape(shape, vwedge, i, false);
+        thisOrReplacement.addShape(shape, vwedge, i, false);
       }
     }
     return addedShapes;
@@ -336,27 +344,10 @@ public class Vertex implements Comparable<Vertex> {
   public void setLocation(Point location, Vertex anyLocatedVertex) {
     if(this.location == null) {
       this.location = location;
-      if(anyLocatedVertex == null) {
-        // it has to start somewhere.
-        // One of these calls can't have a reference located vertex.
-        this.allTheLiveVertices = new HashSet<>();
-        this.pointSet = new Point.PointSet();
-        this.pointsToVertices = new HashMap<>();
-      } else {
+      if(anyLocatedVertex != null) {
         this.allTheLiveVertices = anyLocatedVertex.allTheLiveVertices;
         this.pointSet = anyLocatedVertex.pointSet;
         this.pointsToVertices = anyLocatedVertex.pointsToVertices;
-      }
-      Point similarExisting = pointSet.getSimilarPoint(location);
-      if(similarExisting != null && similarExisting != location) {
-        // This means there's a vertex to merge with.
-        Vertex vertexToMergeWith = pointsToVertices.get(similarExisting);
-        // This is signing up to be eaten (and declared dead) by that vertex.
-        vertexToMergeWith.mergeVertexIntoThis(this);
-      } else {
-        allTheLiveVertices.add(this);
-        pointSet.addPoint(location);
-        pointsToVertices.put(location, this);
       }
     }
   }
@@ -384,22 +375,6 @@ public class Vertex implements Comparable<Vertex> {
       }
     }
     return shapePoints;
-  }
-
-  public Vertex findAnyLiveNonFullVertex() {
-    return findAnyLiveVertex(true);
-  }
-
-  private Vertex findAnyLiveVertex(boolean requiredNonFull) {
-    if(!dead && (!isFull() || !requiredNonFull)) {
-      return this;
-    }
-    for(Vertex vertex : allTheLiveVertices) {
-      if(!requiredNonFull || !vertex.isFull()) {
-        return vertex;
-      }
-    }
-    return null;
   }
 
   public Set<Vertex> getAllLiveNonFullVertices() {

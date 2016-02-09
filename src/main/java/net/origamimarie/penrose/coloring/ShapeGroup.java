@@ -22,10 +22,40 @@ public class ShapeGroup {
   private List<Shape> shapes;
   private Set<ShapeGroup> neighborShapeGroups;
   private ColoredShapeGroup coloredShapeGroup;
+  private Point[] shapePoints;
 
   public ShapeGroup(List<Shape> shapes) {
     this.shapes = shapes;
     neighborShapeGroups = new HashSet<>();
+    calculateShapePoints();
+  }
+
+  private void calculateShapePoints() {
+    // The shapes have been provided in a continuous counterclockwise fan.
+    // They may loop around in a series of 5 shapes.
+    // If the don't loop around, the center vertex needs to be generated too.
+    // There's a duplicate point at the end.
+    int pointCount = shapes.size() == 5 ? 11 : shapes.size()*2 + 3;
+    shapePoints = new Point[pointCount];
+    int pointNumber = 0;
+    for(Shape shape : shapes) {
+      // This is taking advantage of the fact that G0 and N0
+      // resolve to the same vertex on Darts and Kites.
+      shapePoints[pointNumber] = shape.getVertex(Vwedge.G0).getLocation();
+      pointNumber++;
+      // And of course, likewise with F0 and M0.
+      shapePoints[pointNumber] = shape.getVertex(Vwedge.F0).getLocation();
+      pointNumber++;
+    }
+    // Last point on last shape.
+    shapePoints[pointNumber] = shapes.get(shapes.size()-1).getVertex(Vwedge.E0).getLocation();
+    pointNumber++;
+    // Hit the center vertex and starting vertex again if we need to.
+    if(shapes.size() < 5) {
+      shapePoints[pointNumber] = shapes.get(0).getVertex(Vwedge.D0).getLocation();
+      pointNumber++;
+      shapePoints[pointNumber] = shapes.get(0).getVertex(Vwedge.G0).getLocation();
+    }
   }
 
   public void setColoredShapeGroup(ColoredShapeGroup coloredShapeGroup) {
@@ -41,11 +71,13 @@ public class ShapeGroup {
   }
 
   public List<Point[]> getShapePoints() {
+    return Collections.singletonList(shapePoints);
+    /*
     List<Point[]> shapePoints = new ArrayList<>();
     for(Shape shape : shapes) {
       shapePoints.add(shape.getShapePoints());
     }
-    return shapePoints;
+    return shapePoints;*/
   }
 
   // Keep only the ShapeGroups that have at least one point inside the rectangle.

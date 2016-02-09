@@ -76,30 +76,6 @@ public abstract class Shape {
     }
   }
 
-  public Vertex getVertexCounterclockwiseOf(Vertex vertex) {
-    for(int i = 0; i < 4; i++) {
-      if(vertices[i] == vertex) {
-        return vertices[(i+1)%4];
-      }
-    }
-    // Turns out we didn't have that vertex.
-    return null;
-  }
-
-  public Vertex getVertexClockwiseOf(Vertex vertex) {
-    for(int i = 0; i < 4; i++) {
-      if(vertices[i] == vertex) {
-        i = i - 1;
-        if(i < 0) {
-          i = 3;
-        }
-        return vertices[i];
-      }
-    }
-    // Turns out we didn't have that vertex.
-    return null;
-  }
-
   public void setOrientation(Orientation orientation) {
     if (this.orientation == null) {
       this.orientation = orientation;

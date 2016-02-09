@@ -11,77 +11,116 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 public class SvgOutput {
 
-  public static void pointListsToSvgFile(File file, List<Point[]> pointLists, double scaleFactor, Color color, boolean outlines, String ... optionalLinks) throws IOException {
+  public static void pointListsToSvgFile(File file, List<Point[]> pointLists, double scaleFactor, Color color, double opacity, boolean outlines, Collection<Point> vertices, String ... optionalLinks) throws IOException {
     BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-    pointListsToSvg(writer, pointLists, scaleFactor, color, outlines, null, optionalLinks);
+    pointListsToSvg(writer, pointLists, scaleFactor, color, opacity, outlines, vertices, optionalLinks);
     writer.close();
   }
 
-  public static void pointListsToSvgFile(File file, List<Point[]> pointLists, double scaleFactor, Color color, boolean outlines, Collection<Point> vertices, String ... optionalLinks) throws IOException {
+  public static void shapeGroupsToSvgFile(File file, List<ColoredShapeGroup> coloredShapeGroups,
+                                          double scaleFactor, boolean outlines,
+                                          List<Color> optionalColorList, double opacity, String... optionalLinks) throws IOException {
     BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-    pointListsToSvg(writer, pointLists, scaleFactor, color, outlines, vertices, optionalLinks);
-    writer.close();
-  }
 
-  public static String pointListsToSvg(List<Point[]> pointLists, double scaleFactor, Color color, boolean outlines) {
-    try {
-      StringBuilder sb = new StringBuilder();
-      pointListsToSvg(sb, pointLists, scaleFactor, color, outlines, null);
-      return sb.toString();
-    } catch (IOException ignored) {
-      // Really, this is a StringBuffer, we're not going to get an IOException.
-      return "";
-    }
-  }
-
-  public static void coloredShapeGroupListToSvgFile(File file, List<ColoredShapeGroup> coloredShapeGroups, double scaleFactor, boolean outlines) throws IOException {
-    BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-    Map<Point[], Color> pointsWithColors = new HashMap<>();
-    for(ColoredShapeGroup coloredShapeGroup : coloredShapeGroups) {
-      for(Point[] points : coloredShapeGroup.getShapeGroup().getShapePoints()) {
-        pointsWithColors.put(points, coloredShapeGroup.getColor());
-      }
-    }
-    Map<Point[], Color> scaledPointsWithColors = new HashMap<>();
-    List<Point[]> scaledPoints = new ArrayList<>();
-    for(Point[] points : pointsWithColors.keySet()) {
-      Point[] scaled = new Point[points.length];
-      scaledPointsWithColors.put(scaled, pointsWithColors.get(points));
-      scaledPoints.add(scaled);
-      for(int i = 0; i < points.length; i++) {
-        if(points[i] != null) {
-          scaled[i] = new Point(points[i].x * scaleFactor, points[i].y * -scaleFactor);
-        }
-      }
+    List<Point[]> allThePointLists = new ArrayList<>(coloredShapeGroups.size());
+    for(ColoredShapeGroup group : coloredShapeGroups) {
+      allThePointLists.addAll(group.getShapeGroup().getShapePoints());
     }
 
     Point[] minAndMax = new Point[2];
-    getMinAndMax(scaledPoints, minAndMax);
-    Point min = minAndMax[0];
-    Point max = minAndMax[1];
+    getMinAndMax(allThePointLists, minAndMax);
+    Point min = minAndMax[0].times(scaleFactor);
+    Point max = minAndMax[1].times(scaleFactor);
     max = max.minus(min);
     Point offset = min.times(-1);
 
     appendHeader(writer);
+    appendLinks(writer, optionalLinks);
     appendSvgHeader(writer, max);
 
-    for(Point[] points : scaledPointsWithColors.keySet()) {
-      if(points[0] != null && points[1] != null && points[2] != null && points[3] != null) {
-        appendPolygon(writer, points, offset, scaledPointsWithColors.get(points), outlines);
+    String debuggingClipPathPrefix = "clipPath";
+    double debuggingLineWeight = scaleFactor/8;
+    List<Point> debuggingColorPointOffsets = new ArrayList<>();
+    // Only if we're doing the debugging radiating rainbow thingy.
+    if(optionalColorList != null) {
+      appendDefsHeader(writer);
+      for(int i = 0; i < coloredShapeGroups.size(); i++) {
+        ColoredShapeGroup group = coloredShapeGroups.get(i);
+        List<Point[]> scaledPointsList = new ArrayList<>();
+        for(Point[] points : group.getShapeGroup().getShapePoints()) {
+          Point[] scaled = new Point[points.length];
+          scaledPointsList.add(scaled);
+          for (int j = 0; j < points.length; j++) {
+            if (points[j] != null) {
+              scaled[j] = new Point(points[j].x * scaleFactor, points[j].y * scaleFactor);
+            }
+          }
+        }
+        appendClipPath(writer, debuggingClipPathPrefix + i, scaledPointsList, offset);
+      }
+      appendDefsFooter(writer);
+
+      for(int i = 0; i < optionalColorList.size(); i++) {
+        debuggingColorPointOffsets.add(new Point
+                (Math.cos(2*i*Math.PI/optionalColorList.size())*scaleFactor,
+                Math.sin(2*i*Math.PI/optionalColorList.size())*scaleFactor));
       }
     }
+
+    for(int i = 0; i < coloredShapeGroups.size(); i++) {
+      ColoredShapeGroup group = coloredShapeGroups.get(i);
+      List<Point[]> pointsList = group.getShapeGroup().getShapePoints();
+      for(Point[] points : pointsList) {
+        Point[] scaled = new Point[points.length];
+        for(int j = 0; j < points.length; j++) {
+          if(points[j] != null) {
+            scaled[j] = new Point(points[j].x * scaleFactor, points[j].y * scaleFactor);
+          }
+        }
+
+        // This means we should draw the options, not the color.
+        if(group.getColorPalette().getCurrentColor() == null) {
+          appendPolygon(writer, scaled, offset, Color.WHITE, opacity, outlines);
+          if(optionalColorList != null) {
+            // Get the overall boundaries.
+            Point[] localMinAndMax = new Point[2];
+            getMinAndMax(Collections.singletonList(scaled), localMinAndMax);
+            // Find the center.
+            Point center = new Point((localMinAndMax[0].x + localMinAndMax[1].x)/2.0,
+                    (localMinAndMax[0].y + localMinAndMax[1].y)/2.0);
+            center = center.plus(offset);
+            for(int j = 0; j < optionalColorList.size(); j++) {
+              List<Color> usableColors = group.getColorPalette().getUsableColors();
+              if(usableColors.contains(optionalColorList.get(j))) {
+                // This means we should fill in this radiating slot.
+                appendClippedLine(writer, debuggingClipPathPrefix + i,
+                        center, center.plus(debuggingColorPointOffsets.get(j)),
+                        debuggingLineWeight, optionalColorList.get(j));
+              }
+            }
+          }
+
+        } else {
+          // This means just draw the color.
+          appendPolygon(writer, scaled, offset, group.getColor(), opacity, outlines);
+        }
+
+      }
+
+    }
+
     appendFooter(writer);
     writer.close();
   }
 
-  public static void pointListsToSvg(Appendable ap, List<Point[]> pointLists, double scaleFactor, Color color, boolean outlines, Collection<Point> vertices, String ... links) throws IOException {
+  public static void pointListsToSvg(Appendable ap, List<Point[]> pointLists, double scaleFactor,
+                                     Color color, double opacity, boolean outlines, Collection<Point> vertices, String ... links) throws IOException {
     List<Point[]> scaledPoints = new ArrayList<>(pointLists.size());
     for(Point[] points : pointLists) {
       Point[] scaled = new Point[points.length];
@@ -106,7 +145,7 @@ public class SvgOutput {
     float hue = 0.0f;
     for(Point[] points : scaledPoints) {
       if(points[0] != null && points[1] != null && points[2] != null && points[3] != null) {
-        appendPolygon(ap, points, offset, (color == null) ? Color.getHSBColor(hue, 1.0f, 1.0f) : color, outlines);
+        appendPolygon(ap, points, offset, (color == null) ? Color.getHSBColor(hue, 1.0f, 1.0f) : color, opacity, outlines);
         hue = hue + 0.025f;
       }
     }
@@ -164,11 +203,53 @@ public class SvgOutput {
     ap.append("</svg>\n").append("</body>\n</html>\n");
   }
 
-  private static void appendPolygon(Appendable ap, Point[] points, Point offset, Color color, boolean outlines) throws IOException {
-    String colorString = colorToHex(color == null ? Color.WHITE : color);
-    ap.append("  <g fill-rule=\"nonzero\" fill=\"#").
+  private static void appendDefsHeader(Appendable ap) throws IOException {
+    ap.append("<defs>\n");
+  }
+
+  private static void appendDefsFooter(Appendable ap) throws IOException {
+    ap.append("</defs>");
+  }
+
+  private static void appendClipPath(Appendable ap, String id, List<Point[]> pointsList, Point offset) throws IOException {
+    ap.append("<clipPath id=\"").append(id).append("\">");
+    for(Point[] points : pointsList) {
+      appendPath(ap, points, offset);
+    }
+    ap.append("</clipPath>");
+  }
+
+  private static void appendClippedLine(Appendable ap, String clipId, Point start, Point end,
+                                        double lineWidth, Color color) throws IOException {
+    ap.append("<line x1=\"").
+            append(String.valueOf(start.x)).
+            append("\" y1=\"").
+            append(String.valueOf(start.y)).
+            append("\" x2=\"").
+            append(String.valueOf(end.x)).
+            append("\" y2=\"").
+            append(String.valueOf(end.y)).
+            append("\" stroke=\"").
+            append(colorToHex(color)).
+            append("\" stroke-opacity=\"0.4\" stroke-width=\"").
+            append(String.valueOf(lineWidth)).
+            append("\" clip-path=\"url(#").
+            append(clipId).
+            append(")\" />\n");
+  }
+
+  private static void appendPolygon(Appendable ap, Point[] points, Point offset,
+                                    Color color, double opacity, boolean outlines) throws IOException {
+    String colorString = colorToHex(color);
+    ap.append("  <g fill-rule=\"nonzero\" fill=\"").
             append(colorString);
-    ap.append(outlines ? "\" fill-opacity=\"0.3\" stroke=\"black\" stroke-width=\"0.5\" >\n" : "\" fill-opacity=\"0.4\" >\n");
+    ap.append(outlines ? "\" stroke=\"black\" stroke-width=\"0.5\" " : "\" ");
+    ap.append("fill-opacity=\"").append(String.valueOf(opacity)).append("\" >\n");
+    appendPath(ap, points, offset);
+    ap.append("  </g>\n");
+  }
+
+  private static void appendPath(Appendable ap, Point[] points, Point offset) throws IOException {
     ap.append("    <path d=\"");
     ap.append("M");
     for(Point point : points) {
@@ -176,24 +257,27 @@ public class SvgOutput {
     }
     Point point = points[0];
     ap.append(String.valueOf(point.x + offset.x)).append(",").append(String.valueOf(point.y + offset.y)).append(" z ");
-    ap.append("\" />\n").append("  </g>\n");
+    ap.append("\" />\n");
   }
 
   private static void appendVertex(Appendable ap, Point point, Point offset, double scaleFactor, Color color) throws IOException {
-    String colorString = colorToHex(color == null ? Color.WHITE : color);
+    String colorString = colorToHex(color);
     ap.append("<circle cx=\"").
             append(String.valueOf(scaleFactor * point.x + offset.x)).
             append("\" cy=\"").
             append(String.valueOf(-scaleFactor * point.y + offset.y)).
             append("\" r=\"").
             append(String.valueOf(scaleFactor/4)).
-            append("\" stroke=\"black\" stroke-width=\"0.25\" fill=\"#").
+            append("\" stroke=\"black\" stroke-width=\"0.25\" fill=\"").
             append(colorString).
             append("\" fill-opacity=\"0.3\" />");
   }
 
   private static String colorToHex(Color c) {
-    return String.format("%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
+    if(c == null) {
+      return "none";
+    }
+    return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
   }
 
 }

@@ -21,40 +21,36 @@ import java.util.List;
 public class Main {
 
   public static void main(String[] args) throws IOException {
-    causeVertexDuplicationError();
+    makePrettyThing();
   }
 
-  private static void causeVertexDuplicationError() throws IOException {
+  private static void getToDebugPoint() throws IOException {
     for(int i = 0; i < 100; i++) {
-      makePrettyThing();
+      log.debug("{}", i);
+      try {
+        makePrettyThing();
+      } catch (IllegalArgumentException ignored) {}
     }
-/*
-    TilingGenerator generator = new TilingGenerator();
-    List<Point> allVertexPoints = new ArrayList<>();
-    for(Vertex vertex : generator.getAllVertices()) {
-      allVertexPoints.add(vertex.getLocation());
-    }
-    File file = new File("/Users/mariep/personalcode/penrose/foo.svg");
-    SvgOutput.pointListsToSvgFile(file, generator.getAllPointLists(), 50, Color.WHITE, true, allVertexPoints);
-    */
   }
 
   private static void makePrettyThing() throws IOException {
     Point low = new Point(0, 0);
     Point high = new Point(60, 30);
     TilingGenerator generator = new TilingGenerator(low, high);
-    /*File file = new File("/Users/mariep/personalcode/penrose/colors.svg");
+    File file = new File("/Users/mariep/personalcode/penrose/colors.svg");
     Collection<ShapeGroup> shapeGroups = ShapeGroup.generateShapeGroups(generator.getAllVertices(), ShapeGroupType.SINGLE_SHAPES, low, high);
-    List<ColoredShapeGroup> coloredShapeGroup = ColoredShapeGroup.colorShapeGroups(shapeGroups, ColoringScheme.RAINBOW_32_FUZZY_SIMILAR);
+    List<ColoredShapeGroup> coloredShapeGroup = ColoredShapeGroup.colorShapeGroups(shapeGroups, ColoringScheme.CONFETTI);
     log.debug("dumping {} shapeGroups to file", coloredShapeGroup.size());
-    SvgOutput.coloredShapeGroupListToSvgFile(file, coloredShapeGroup, 20, true);
+    SvgOutput.shapeGroupsToSvgFile(file, coloredShapeGroup, 20, false, null, 0.7);
 
     file = new File("/Users/mariep/personalcode/penrose/foo.svg");
     List<Point> allVertexPoints = new ArrayList<>();
     for(Vertex vertex : generator.getAllVertices()) {
-      allVertexPoints.add(vertex.getLocation());
+      if(vertex.getLocation().isLessThanOrEqual(high) && vertex.getLocation().isGreaterThanOrEqual(low)) {
+        allVertexPoints.add(vertex.getLocation());
+      }
     }
-    SvgOutput.pointListsToSvgFile(file, generator.getAllPointLists(), 20, Color.WHITE, false, allVertexPoints);
-*/
+    SvgOutput.pointListsToSvgFile(file, generator.getAllPointLists(), 20, Color.WHITE, 1.0, false, allVertexPoints);
+
   }
 }

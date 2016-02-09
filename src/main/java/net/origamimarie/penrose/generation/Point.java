@@ -5,7 +5,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 public class Point {
-  private static final double tolerance = 0.000000000000001;
+  private static final double tolerance = 0.000000000001;
 
   public static final Point ORIGIN = new Point(0.0, 0.0);
 
@@ -80,11 +80,6 @@ public class Point {
 
     public PointSet() {
       xMap = new TreeMap<>(new XComparator());
-    }
-
-    public boolean containsSimilar(Point point) {
-      TreeSet<Point> ySet = xMap.get(point);
-      return ySet != null && ySet.contains(point);
     }
 
     public Point getSimilarPoint(Point point) {

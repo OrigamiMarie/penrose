@@ -1,10 +1,15 @@
 package net.origamimarie.penrose.coloring;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.awt.Color;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
+@Slf4j
 public class ColorPalette implements Comparable<ColorPalette> {
 
   private static Random random = new Random();
@@ -26,6 +31,32 @@ public class ColorPalette implements Comparable<ColorPalette> {
     return currentColor;
   }
 
+  public List<Color> getUsableColors() {
+    List<Color> usableColors = new ArrayList<>(colors.size());
+    for(ColorForPalette usableColor : colors) {
+      usableColors.add(usableColor.color);
+    }
+    return usableColors;
+  }
+
+  public void dumpAllButOne() {
+    while(colors.size() > 1) {
+      attemptedColors.add(colors.remove(random.nextInt(colors.size())));
+    }
+  }
+
+  // If this list has n palettes and fewer than n colors total, it's doomed.
+  // Woops TODO if we are fine with matching neighbors this is wrong.
+  public static boolean inadequateColorCountTotal(ColorPalette ... palettes) {
+    Set<Color> allColors = new HashSet<>();
+    for(ColorPalette palette : palettes) {
+      for(ColorForPalette colorForPalette : palette.colors) {
+        allColors.add(colorForPalette.color);
+      }
+    }
+    return (allColors.size() >= palettes.length);
+  }
+
   public Color useRandomColor() {
     if(colors.size() == 0) {
       throw new IllegalArgumentException("There are no available colors to use");
@@ -43,6 +74,9 @@ public class ColorPalette implements Comparable<ColorPalette> {
    * @return All of the colors that were removed because of the new neighbor.
    */
   public List<ColorForPalette> informOfNewNeighbor(Color neighbor) {
+    if(currentColor != null) {
+      log.debug("huh, this shouldn't be");
+    }
     List<ColorForPalette> removedColors = new ArrayList<>(colors.size());
     if(currentColor == null) {
       for(int i = 0; i < colors.size(); i++) {
@@ -57,6 +91,10 @@ public class ColorPalette implements Comparable<ColorPalette> {
 
   public void addBackColors(List<ColorForPalette> colorsForPalette) {
     colors.addAll(colorsForPalette);
+  }
+
+  public void unsetColor() {
+    this.currentColor = null;
   }
 
   public void resetAttemptedColors() {
