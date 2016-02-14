@@ -1,11 +1,8 @@
 package net.origamimarie.penrose.generation;
 
 import lombok.extern.slf4j.Slf4j;
-import net.origamimarie.penrose.output.SvgOutput;
 import org.apache.commons.collections4.ListUtils;
 
-import java.awt.*;
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -132,9 +129,9 @@ public class Vertex implements Comparable<Vertex> {
   }
 
   // Find an open slot, figure out what to put in it, and drop it in.
-  public void addRandomShape() {
+  public boolean addRandomShape() {
     if(isFull() || currentPossibleVwedges.size() == 0) {
-      return;
+      return false;
     }
     // Start somewhere random.
     int seekStart = rand.nextInt(10);
@@ -152,10 +149,22 @@ public class Vertex implements Comparable<Vertex> {
     // Pick a random item from currentPossibleVwedges and work it out from there.
     int randomNumber = rand.nextInt(currentPossibleVwedges.size());
     Vwedge vwedge = currentPossibleVwedges.get(randomNumber)[seekStart];
-    addShape(Shape.makeNew(vwedge.associatedShape), vwedge, seekStart, true);
+    return addShape(Shape.makeNew(vwedge.associatedShape), vwedge, seekStart, true);
   }
 
-  public void addShape(Shape shape, Vwedge vwedge, int vwedgeLocation, boolean autoFillAll) {
+  public boolean addShape(Shape shape, Vwedge vwedge, int vwedgeLocation, boolean autoFillAll) {
+    // We have a problem to deal with here.
+    // The shape we add may cause problems later down the line.
+    // Now we don't want to keep a save stack every single time because that gets heavy fast.
+    // So we'll just keep one if this shape wasn't autoFilled (because autoFilling has no choices anyway).
+    // This is indicated by autoFillAll being true (because being false means we're in the middle
+    // of an autoFill sequence usually).
+    // We want to capture state via shapes (not vertices) because vertices can be merged and killed.
+    List<Shape> allTheBackedUpShapes = new ArrayList<>();
+    if(autoFillAll) {
+      allTheBackedUpShapes = getAllShapes();
+    }
+
     // Help the shape figure out its orientation.
     shape.setOrientation(vwedge, vwedgeLocation);
     // Add the shape to this vertex, which also adds this vertex to the shape and recursively merges vertices.
@@ -165,11 +174,61 @@ public class Vertex implements Comparable<Vertex> {
       vertex.pointsToVertices = this.pointsToVertices;
     }
     addShapeWithOrientation(shape, vwedge);
+    //dumpToSvgDebug(false, false);
 
     // This prevents deeply nested autoFillAll loops,
     // which tend to cause problems and are unnecessary.
     if(autoFillAll) {
-      autoFillAllTheShapes();
+      // There might be a better way of doing this, I'm not sure.
+      // This sure is quick and easy though.
+      try {
+        autoFillAllTheShapes();
+      } catch (Exception e) {
+        // Well, looks like that autoFill went badly.
+        // I'm going to assume it's because the shape was chosen badly.
+        // Time to roll back!
+        revertToKnownGoodShapeSet(allTheBackedUpShapes);
+        return false;
+      }
+    }
+    // No problem adding this shape.
+    return true;
+  }
+
+  // Something went badly, and we're removing all shapes except this set of known good shapes.
+  private void revertToKnownGoodShapeSet(List<Shape> shapeList) {
+    // Since we're here, it's a good idea to compact this down to a Set for seek performance.
+    Set<Shape> shapeSet = new HashSet<>(shapeList);
+    // Copying out to a list so we can delete them from the original set as we go
+    // without concurrency errors.
+    List<Vertex> vertexList = new ArrayList<>(allTheLiveVertices);
+    for(Vertex vertex : vertexList) {
+      // Remove all shapes that aren't in the set from this vertex.
+      // Keep a count of what remains.
+      vertex.openWedges = 0;
+      for(int i = 0; i < WEDGE_COUNT; i++) {
+        if(vertex.wedges[i] != null && !shapeSet.contains(vertex.wedges[i])) {
+          vertex.wedges[i] = null;
+          vertex.vwedges[i] = null;
+        }
+        vertex.openWedges += vertex.wedges[i] == null ? 1 : 0;
+      }
+
+      // Now we've removed all of the shapes that aren't in the set.
+      // It's now possible that this vertex doesn't have any shapes anymore.
+      // That means it's dead.
+      if(vertex.openWedges == WEDGE_COUNT) {
+        vertex.dead = true;
+        allTheLiveVertices.remove(vertex);
+        pointsToVertices.remove(vertex.location);
+        pointSet.removePoint(vertex.location);
+        // No point in doing any other calculations on this vertex, it's dead.
+        continue;
+      }
+      // Start over with the possible vwedges.
+      if(vertex.openWedges > 0) {
+        vertex.completelyRecalculatePossibleVwedges();
+      }
     }
   }
 
@@ -183,13 +242,6 @@ public class Vertex implements Comparable<Vertex> {
     for(Vertex vertex : shape.getVertices()) {
       vertex.findLocationCopyAndMerge();
     }
-    /*
-    // The shape already has a vertex in the spot where this one should go.
-    // So let's get that vertex, merge it to this, and replace it.
-    Vertex previousVertex = shape.getVertex(vwedge).calculateReplacement();
-    if(previousVertex != this) {
-      mergeVertexIntoThis(previousVertex);
-    }*/
   }
 
   private void findLocationCopyAndMerge() {
@@ -216,8 +268,6 @@ public class Vertex implements Comparable<Vertex> {
     Set<Shape> shapesToReplaceVerticesIn = new HashSet<>();
     for(int i = 0; i < WEDGE_COUNT; i++) {
       if(vertex.wedges[i] != null && this.wedges[i] != null && vertex.wedges[i] != this.wedges[i]) {
-        // TODO remove when debugged.
-        dumpToSvgDebug();
         throw new IllegalArgumentException("Trying to merge two vertices that have incompatible wedges.  ");
       }
       if(vertex.wedges[i] != null) {
@@ -233,18 +283,11 @@ public class Vertex implements Comparable<Vertex> {
 
     // Only possibleVwedges that worked with both.
     this.currentPossibleVwedges = ListUtils.intersection(this.currentPossibleVwedges, vertex.currentPossibleVwedges);
-  }
-
-  public void dumpToSvgDebug() {
-    File file = new File("/Users/mariep/personalcode/penrose/foo.svg");
-    List<Point> allVertexPoints = new ArrayList<>();
-    for(Vertex vertex : allTheLiveVertices) {
-      allVertexPoints.add(vertex.getLocation());
+    if(this.currentPossibleVwedges.size() == 0) {
+      // This means that shapes were merged in a way that is incompatible with
+      // filling in more of the pattern.  We can't go on.
+      throw new IllegalArgumentException("This vertex merger made combination that is not allowed");
     }
-    try {
-      SvgOutput.pointListsToSvgFile(file, getAllShapePoints(), 40, Color.MAGENTA, 0.4, true, allVertexPoints);
-    } catch (Exception ignored) {}
-
   }
 
   // So it turns out that we might be able to completely avoid merging accidents by
@@ -273,6 +316,7 @@ public class Vertex implements Comparable<Vertex> {
         }
       }
     } while(addedShapes.size() > 0 && !dead);
+    //dumpToSvgDebug(true, false);
   }
 
   private List<Shape> autoFillShapes() {
@@ -294,7 +338,6 @@ public class Vertex implements Comparable<Vertex> {
             // This means there are two possibilities for this vwedge,
             // which means it won't get auto-filled.
             justOneVwedge[i] = false;
-            break;
           }
         }
       }
@@ -324,6 +367,12 @@ public class Vertex implements Comparable<Vertex> {
       openWedges--;
       vwedges[i] = vwedge;
     }
+    recalculatePossibleVwedges();
+  }
+
+  // Start from scratch because we think there are more viable options than are in currentPossibleVwedges.
+  private void completelyRecalculatePossibleVwedges() {
+    currentPossibleVwedges = new ArrayList<>(allVwedgeConfigurations);
     recalculatePossibleVwedges();
   }
 
@@ -377,6 +426,16 @@ public class Vertex implements Comparable<Vertex> {
     return shapePoints;
   }
 
+  // Sure we could put these in a set.  It would be more elegant.
+  // But it would also be really slow.
+  private List<Shape> getAllShapes() {
+    List<Shape> visitedShapes = new ArrayList<>();
+    for(Vertex vertex : allTheLiveVertices) {
+      visitedShapes.addAll(Arrays.asList(vertex.wedges));
+    }
+    return visitedShapes;
+  }
+
   public Set<Vertex> getAllLiveNonFullVertices() {
     Set<Vertex> liveNonFullVertices = new HashSet<>();
     for(Vertex vertex : allTheLiveVertices) {
@@ -391,4 +450,28 @@ public class Vertex implements Comparable<Vertex> {
     return allTheLiveVertices;
   }
 
+  /*public void dumpToSvgDebug(boolean highlight, boolean verticesToo, Vertex ... extraVertices) {
+    int number = fileNumber.getAndIncrement();
+    String previousFileName = String.format("vertexFrame%05d.html", number - 1);
+    String nextFileName = String.format("vertexFrame%05d.html", number+1);
+    String filename = String.format("/Users/mariep/personalcode/frame.noindex/vertexFrame%05d.html", number);
+    File file = new File(filename);
+    List<Point> allVertexPoints = new ArrayList<>();
+    if(verticesToo) {
+      for(Vertex vertex : allTheLiveVertices) {
+        allVertexPoints.add(vertex.getLocation());
+      }
+    }
+    for(Vertex vertex : extraVertices) {
+      allVertexPoints.add(vertex.getLocation());
+    }
+    try {
+      if(highlight) {
+        log.debug("dumping highlighted frame {}", file.getPath());
+      }
+      Color color = highlight ? new Color(255, 0, 255) : new Color(0, 255, 255);
+      SvgOutput.pointListsToSvgFile(file, getAllShapePoints(), 40, color, 0.4, true, allVertexPoints, previousFileName, nextFileName);
+    } catch (Exception ignored) {}
+
+  }*/
 }

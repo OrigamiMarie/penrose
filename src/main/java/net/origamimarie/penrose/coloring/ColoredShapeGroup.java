@@ -22,15 +22,28 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
 
   private static String mostOfFileName = "/Users/mariep/personalcode/frame/frame";
-  private static int fileNumberMod = 100000;
+  private static int fileNumberMod = 1000000;
   private static AtomicInteger fileNumber = new AtomicInteger(0);
   private ColorPalette colorPalette;
   private ShapeGroup shapeGroup;
+
+  private int cachedEmptyNeighborCount;
 
   public ColoredShapeGroup(ShapeGroup shapeGroup, ColorPalette colorPalette) {
     this.shapeGroup = shapeGroup;
     shapeGroup.setColoredShapeGroup(this);
     this.colorPalette = colorPalette;
+    // For one, this is accurate, for another,
+    // the neighbors don't all have shape groups yet so attempts to calculate would NPE.
+    cachedEmptyNeighborCount = 0;
+  }
+
+  public void recalculateEmptyNeighborCount() {
+    int count = 0;
+    for(ShapeGroup neighborGroup : shapeGroup.getNeighbors()) {
+      count = count + neighborGroup.getColoredShapeGroup().colorPalette.remainingColorCount() == 0 ? 1 : 0;
+    }
+    cachedEmptyNeighborCount = count;
   }
 
   public Color getColor() {
@@ -38,8 +51,13 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
   }
 
   @Override
-  public int compareTo(ColoredShapeGroup csg) {
-    return this.colorPalette.compareTo(csg.colorPalette);
+  public int compareTo(ColoredShapeGroup coloredShapeGroup) {
+    int comparison = this.colorPalette.compareTo(coloredShapeGroup.colorPalette);
+    if(comparison == 0) {
+      return Integer.compare(this.cachedEmptyNeighborCount, coloredShapeGroup.cachedEmptyNeighborCount);
+      //return Integer.compare(coloredShapeGroup.cachedEmptyNeighborCount, this.cachedEmptyNeighborCount);
+    }
+    return comparison;
   }
 
   public Color useRandomColor() {
@@ -55,7 +73,8 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
   }
 
   public static List<ColoredShapeGroup> colorShapeGroups(Collection<ShapeGroup> shapeGroups,
-                                                         ColoringScheme coloringScheme) {
+                                                         ColoringScheme coloringScheme,
+                                                         int maxQueueLoops) {
     ColorPalette originalPalette = new ColorPalette(coloringScheme.colorsForPalette);
     List<ColoredShapeGroup> coloredShapeGroups = new ArrayList<>(shapeGroups.size());
     // Prime all of the coloredShapeGroups
@@ -76,22 +95,15 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
     firstGroup.colorPalette.dumpAllButOne();
 
     List<ColoredShapeGroup> shapesThatHaveBeenColored = new ArrayList<>(shapeGroups.size());
+    int queueLoops = 0;
     while(shapeGroupQueue.size() > 0) {
+      queueLoops++;
       ColoredShapeGroup tempShapeGroup = shapeGroupQueue.remove();
       Color tempColor = tempShapeGroup.useRandomColor();
 
       dumpToFile(coloredShapeGroups, coloringScheme);
 
       ColoringFrame frame = new ColoringFrame(tempColor, tempShapeGroup);
-
-      /*
-      for(ShapeGroup debug : tempShapeGroup.getShapeGroup().getNeighbors()) {
-        if(debug.getColoredShapeGroup().getColor() == tempColor) {
-          //log.debug("uh-oh ({})", fileNumber.get());
-        }
-      }
-      */
-
       coloringFrameStack.push(frame);
       shapesThatHaveBeenColored.add(tempShapeGroup);
       for(ShapeGroup neighborGroup : tempShapeGroup.shapeGroup.getNeighbors()) {
@@ -101,8 +113,7 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
           if(lostColors.size() > 0) {
             frame.addGroupAndLostColors(neighborGroup.getColoredShapeGroup(), lostColors);
             // Reset its location in the queue, because it has fewer colors available now.
-            shapeGroupQueue.remove(neighborGroup.getColoredShapeGroup());
-            shapeGroupQueue.add(neighborGroup.getColoredShapeGroup());
+            reQueueColoredShapeGroups(Collections.singletonList(neighborGroup.getColoredShapeGroup()), shapeGroupQueue);
           }
 
           ColoringFrame deColoredFrame = null;
@@ -119,9 +130,8 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
               checkFirstGroupAndThrow(deColoredFrame.groupThatGotColored, firstGroup);
               // Recalculate the queue locations of these, since their color counts have changed.
               shapesThatHaveBeenColored.remove(deColoredFrame.groupThatGotColored);
-              shapeGroupQueue.add(deColoredFrame.groupThatGotColored);
-              shapeGroupQueue.removeAll(deColoredFrame.groupsAndTheirLostColors.keySet());
-              shapeGroupQueue.addAll(deColoredFrame.groupsAndTheirLostColors.keySet());
+              reQueueColoredShapeGroups(Collections.singletonList(deColoredFrame.groupThatGotColored), shapeGroupQueue);
+              reQueueColoredShapeGroups(deColoredFrame.groupsAndTheirLostColors.keySet(), shapeGroupQueue);
             } while(coloredShapeGroupWillFail(deColoredFrame.groupThatGotColored));
 
             // Don't keep trying to color neighbors, we've undone all of that.
@@ -130,35 +140,38 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
         }
       }
       dumpToFile(coloredShapeGroups, coloringScheme);
-
+      if(queueLoops > maxQueueLoops) {
+        throw new IllegalArgumentException("Sorry!  Your coloring scheme is taking too long, " +
+                "you're probably just unlucky this round.");
+      }
     }
+    log.debug("queueLoops:  {}", queueLoops);
 
     return coloredShapeGroups;
   }
 
   // The most obvious thing is that it has no colors available.
-  // There are some slightly less obvious things that we're going to check too,
-  // because they might well reduce the number and depth of blind paths.
+  // There may be other possibilities too, haven't figured that out yet.
   private static boolean coloredShapeGroupWillFail(ColoredShapeGroup coloredShapeGroup) {
-    if(coloredShapeGroup.colorPalette.remainingColorCount() == 0) {
-      return true;
-    }
-    // I don't know where the cross-over point is for efficiency here,
-    // so let's just try the pairs for now.
-    // Woops makes bad assumptions about neighbor color matching.
-    /*
-    for(ShapeGroup neighborGroup : coloredShapeGroup.getShapeGroup().getNeighbors()) {
-      if(!ColorPalette.inadequateColorCountTotal(coloredShapeGroup.colorPalette, neighborGroup.getColoredShapeGroup().colorPalette)) {
-        return true;
-      }
-    }*/
-    return false;
+    return coloredShapeGroup.colorPalette.remainingColorCount() == 0;
   }
 
   private static void checkFirstGroupAndThrow(ColoredShapeGroup groupThatIsOutOfColors, ColoredShapeGroup firstGroup) {
     if(groupThatIsOutOfColors == firstGroup) {
-      throw new IllegalArgumentException("Sorry!  Your coloring scheme could not be completed");
+      throw new IllegalArgumentException("Sorry!  Your coloring scheme could not be completed, " +
+              "you probably have too few colors.");
     }
+  }
+
+  private static void reQueueColoredShapeGroups(Collection<ColoredShapeGroup> groups,
+                                                Queue<ColoredShapeGroup> queue) {
+    // Make sure they will have accurate queue location comparisons.
+    for(ColoredShapeGroup group : groups) {
+      group.recalculateEmptyNeighborCount();
+    }
+    queue.removeAll(groups);
+    queue.addAll(groups);
+
   }
 
   private static void dumpToFile(List<ColoredShapeGroup> coloredShapeGroups, ColoringScheme scheme) {
@@ -218,7 +231,7 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
       RAINBOW_32_FUZZY_SIMILAR.colorsForPalette = new ArrayList<>();
       for(int i = 0; i < colors32.size(); i++) {
         Color color = colors32.get(i);
-        List<Color> similarColors = copyOutItems(colors32, i-5, 11);
+        List<Color> similarColors = copyOutItems(colors32, i-6, 11);
         similarColors.remove(color);
         RAINBOW_32_FUZZY_SIMILAR.colorsForPalette.add(new WhitelistColor(color, similarColors));
       }
@@ -256,7 +269,7 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
       List<T> result = new ArrayList<>();
       for(int i = 0; i < count; i++) {
         if(start < 0) {
-          start = list.size() - start;
+          start = list.size() + start;
         }
         if(start > list.size() - 1) {
           start = start - (list.size() - 1);

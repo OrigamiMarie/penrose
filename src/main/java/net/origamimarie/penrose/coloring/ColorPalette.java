@@ -45,18 +45,6 @@ public class ColorPalette implements Comparable<ColorPalette> {
     }
   }
 
-  // If this list has n palettes and fewer than n colors total, it's doomed.
-  // Woops TODO if we are fine with matching neighbors this is wrong.
-  public static boolean inadequateColorCountTotal(ColorPalette ... palettes) {
-    Set<Color> allColors = new HashSet<>();
-    for(ColorPalette palette : palettes) {
-      for(ColorForPalette colorForPalette : palette.colors) {
-        allColors.add(colorForPalette.color);
-      }
-    }
-    return (allColors.size() >= palettes.length);
-  }
-
   public Color useRandomColor() {
     if(colors.size() == 0) {
       throw new IllegalArgumentException("There are no available colors to use");

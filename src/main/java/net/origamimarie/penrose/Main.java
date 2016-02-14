@@ -20,37 +20,51 @@ import java.util.List;
 @Slf4j
 public class Main {
 
+  private static int xHigh;
+  private static int yHigh;
+
   public static void main(String[] args) throws IOException {
-    makePrettyThing();
+    getToException();
   }
 
   private static void getToDebugPoint() throws IOException {
-    for(int i = 0; i < 100; i++) {
-      log.debug("{}", i);
-      try {
-        makePrettyThing();
-      } catch (IllegalArgumentException ignored) {}
+    xHigh = 60;
+    yHigh = 30;
+    for(int a = 0; a < 6; a++) {
+      boolean success = false;
+      for(int i = 0; i < 30 && !success; i++) {
+        log.debug("{}", i);
+        try {
+          makePrettyThing();
+          success = true;
+        } catch (IllegalArgumentException | NullPointerException ignored) {}
+      }
+      xHigh = xHigh + 10;
+      yHigh = yHigh + 10;
+    }
+  }
+
+  private static void getToException() throws IOException {
+    for(int i = 0; i < 10000; i++) {
+      Point low = new Point(0, 0);
+      Point high = new Point(30, 15);
+      TilingGenerator generator = new TilingGenerator(low, high);
+      log.debug("created {}", i);
     }
   }
 
   private static void makePrettyThing() throws IOException {
     Point low = new Point(0, 0);
-    Point high = new Point(60, 30);
+    Point high = new Point(xHigh, yHigh);
     TilingGenerator generator = new TilingGenerator(low, high);
     File file = new File("/Users/mariep/personalcode/penrose/colors.svg");
     Collection<ShapeGroup> shapeGroups = ShapeGroup.generateShapeGroups(generator.getAllVertices(), ShapeGroupType.SINGLE_SHAPES, low, high);
-    List<ColoredShapeGroup> coloredShapeGroup = ColoredShapeGroup.colorShapeGroups(shapeGroups, ColoringScheme.CONFETTI);
-    log.debug("dumping {} shapeGroups to file", coloredShapeGroup.size());
-    SvgOutput.shapeGroupsToSvgFile(file, coloredShapeGroup, 20, false, null, 0.7);
-
-    file = new File("/Users/mariep/personalcode/penrose/foo.svg");
-    List<Point> allVertexPoints = new ArrayList<>();
-    for(Vertex vertex : generator.getAllVertices()) {
-      if(vertex.getLocation().isLessThanOrEqual(high) && vertex.getLocation().isGreaterThanOrEqual(low)) {
-        allVertexPoints.add(vertex.getLocation());
-      }
+    if(shapeGroups.size() > 4) {
+      List<ColoredShapeGroup> coloredShapeGroup = ColoredShapeGroup.colorShapeGroups(shapeGroups, ColoringScheme.RAINBOW_32_FUZZY_SIMILAR, shapeGroups.size()*4);
+      log.debug("dumping {} shapeGroups to file", coloredShapeGroup.size());
+      SvgOutput.shapeGroupsToSvgFile(file, coloredShapeGroup, 10, false, null, 0.4);
+    } else {
+      throw new IllegalArgumentException("Woops, silly thing, it only made a few shapes!");
     }
-    SvgOutput.pointListsToSvgFile(file, generator.getAllPointLists(), 20, Color.WHITE, 1.0, false, allVertexPoints);
-
   }
 }

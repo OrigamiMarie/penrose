@@ -97,6 +97,11 @@ public class Point {
       }
       ySet.add(point);
     }
+
+    public void removePoint(Point point) {
+      TreeSet<Point> ySet = xMap.get(point);
+      ySet.remove(point);
+    }
   }
 
 }

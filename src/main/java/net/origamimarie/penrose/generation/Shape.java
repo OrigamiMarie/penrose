@@ -56,8 +56,6 @@ public abstract class Shape {
         return;
       }
     }
-    // TODO remove when debugged.
-    vertices[0].dumpToSvgDebug();
     // Bad news if we got down here.
     throw new IllegalArgumentException("This shape did not have the requested vertex to replace");
   }

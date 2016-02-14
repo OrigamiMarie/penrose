@@ -72,12 +72,6 @@ public class ShapeGroup {
 
   public List<Point[]> getShapePoints() {
     return Collections.singletonList(shapePoints);
-    /*
-    List<Point[]> shapePoints = new ArrayList<>();
-    for(Shape shape : shapes) {
-      shapePoints.add(shape.getShapePoints());
-    }
-    return shapePoints;*/
   }
 
   // Keep only the ShapeGroups that have at least one point inside the rectangle.
