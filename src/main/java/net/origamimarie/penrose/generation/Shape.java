@@ -42,6 +42,15 @@ public abstract class Shape {
     setOrientation(getOrientation(vwedge, wedgeLocation));
   }
 
+  public Vertex getCounterclockwiseVertex(Vertex v) {
+    for(int i = 0; i < vertices.length; i++) {
+      if(vertices[i] == v) {
+        return vertices[(i-1+vertices.length) % vertices.length];
+      }
+    }
+    return null;
+  }
+
   public Vertex getVertex(Vwedge vwedge) {
     return vertices[vwedge.v.shapeBasedNumber];
   }

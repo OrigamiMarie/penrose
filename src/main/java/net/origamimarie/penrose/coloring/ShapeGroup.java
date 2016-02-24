@@ -20,13 +20,13 @@ import java.util.Set;
 public class ShapeGroup {
 
   private List<Shape> shapes;
-  private Set<ShapeGroup> neighborShapeGroups;
+  private GroupNeighborCircle neighborCircle;
   private ColoredShapeGroup coloredShapeGroup;
   private Point[] shapePoints;
 
   public ShapeGroup(List<Shape> shapes) {
     this.shapes = shapes;
-    neighborShapeGroups = new HashSet<>();
+    neighborCircle = new GroupNeighborCircle();
     calculateShapePoints();
   }
 
@@ -58,6 +58,10 @@ public class ShapeGroup {
     }
   }
 
+  public Set<ShapeGroup> getNeighboringIsland() {
+    return neighborCircle.getNeighboringIsland();
+  }
+
   public void setColoredShapeGroup(ColoredShapeGroup coloredShapeGroup) {
     this.coloredShapeGroup = coloredShapeGroup;
   }
@@ -67,7 +71,11 @@ public class ShapeGroup {
   }
 
   public Set<ShapeGroup> getNeighbors() {
-    return neighborShapeGroups;
+    return neighborCircle.getNeighborsSetCopy();
+  }
+
+  public List<ShapeGroup> getNeighborsList() {
+    return neighborCircle.getNeighborsListCopy();
   }
 
   public List<Point[]> getShapePoints() {
@@ -84,7 +92,7 @@ public class ShapeGroup {
 
     // Add all of the shape group connections.
     for(ShapeGroup shapeGroup : shapesAndShapeGroups.values()) {
-      populateNeighbors(shapeGroup, shapesAndShapeGroups);
+      shapeGroup.populateNeighbors(shapesAndShapeGroups);
     }
 
     Set<ShapeGroup> set = new HashSet<>();
@@ -112,34 +120,145 @@ public class ShapeGroup {
         set.remove(shapeGroup);
         // The neighbors need to not know that this shape exists anymore.
         // This shape isn't in the set, so no need to inform it.
-        for(ShapeGroup neighbor : shapeGroup.neighborShapeGroups) {
-          neighbor.neighborShapeGroups.remove(shapeGroup);
+        for(ShapeGroup neighbor : shapeGroup.getNeighbors()) {
+          neighbor.neighborCircle.removeNeighbor(shapeGroup);
         }
       }
     }
     return set;
   }
 
-  private static void populateNeighbors(ShapeGroup shapeGroup,
-                                        Map<Shape, ShapeGroup> shapesAndShapeGroups) {
-    for(Shape shape : shapeGroup.shapes) {
+
+  // The tricky thing here is that we want the exact order around the shape,
+  // and without duplicate neighbors.
+  // We're going to assume that a single shapeGroup does not "knot",
+  // which is to say that each vertex represents just one place on the edge of the group,
+  // the group doesn't exist in two separate parts connected by their points.
+  // The possibilities on non-contiguous shapeGroups just give me a headache.
+  public void populateNeighbors(Map<Shape, ShapeGroup> shapesAndShapeGroups) {
+    // This gets meta pretty fast.
+    // Hooo boy.
+    // So fundamentally we need to walk around the shapeGroup and pick up neighbors as we go.
+    // Only the Vertices referenced by the Shapes within the ShapeGroups actually know the neighbors.
+
+    // Get a vertex that is on the edge of our shapeGroup.
+    // That is a vertex that has at least one shape that is not in this group.
+    Vertex startingVertex = null;
+    for(Shape shape : shapes) {
       for(Vertex vertex : shape.getVertices()) {
-        for(Shape neighborOrSelfShape : vertex.getWedges()) {
-          // If it's not self, then it's a neighbor.
-          if(!shapeGroup.shapes.contains(neighborOrSelfShape)) {
-            ShapeGroup neighborShapeGroup = shapesAndShapeGroups.get(neighborOrSelfShape);
-            if(neighborShapeGroup != null) {
-              if(shapeGroup.neighborShapeGroups.add(neighborShapeGroup)) {
-                // Only if it got added to the set (because it wasn't there yet)
-                // should we try adding it symmetrically.
-                neighborShapeGroup.neighborShapeGroups.add(shapeGroup);
-              }
-            }
+        for(Shape vertexNeighbor : vertex.getWedges()) {
+          if(!shapes.contains(vertexNeighbor)) {
+            startingVertex = vertex;
+            break;
           }
+        }
+        if(startingVertex != null) {
+          break;
+        }
+      }
+      if(startingVertex != null) {
+        break;
+      }
+    }
+
+    // Now we have a set of vertices on the edge of this group.
+    // Let's figure out their order around the group.
+    List<Vertex> verticesInOrder = new ArrayList<>();
+    verticesInOrder.add(startingVertex);
+    Vertex currentVertex = startingVertex;
+    do {
+      // Check currentVertex's shapes for the clockwise-most shape in our group.
+      Shape[] vertexNeighborShapes = currentVertex.getWedges();
+      int nextShapeIndex = lowestIndexOfItemInCollection(vertexNeighborShapes, shapes);
+      // Okay, now we should have the next shape picked out.
+      Shape nextShape = vertexNeighborShapes[nextShapeIndex];
+      // And then we can pretty easily get the next vertex.
+      // It's the next counterclockwise vertex on this shape.
+      currentVertex = nextShape.getCounterclockwiseVertex(currentVertex);
+      verticesInOrder.add(currentVertex);
+    } while(currentVertex != startingVertex);
+
+    // Whew.  Now we have all of the vertices in counterclockwise order around the group.
+    // It's time to walk around these vertices and add their shapes to the circle of neighbors.
+    List<Shape> shapesInOrderWithDuplicates = new ArrayList<>();
+    for(Vertex vertex : verticesInOrder) {
+      Shape[] vertexShapes = vertex.getWedges();
+      // Find out where our shapes end, going around this vertex.
+      int startingIndex = lowestIndexAboveCollectionStartingAt(vertex.getWedges(), shapes);
+      // Now we have the counterclockwise start of shapes just after our group's shapes.
+      // Add until we get back around to our group's shapes.
+      // Since the eventual shapeGroups that these will turn into will be going into a set,
+      // don't worry that there will be overlap with the previous and next vertices' shapes.
+      for(int i = 0; i < vertexShapes.length; i++) {
+        if(vertexShapes[startingIndex] != null) {
+          shapesInOrderWithDuplicates.add(vertexShapes[startingIndex]);
+        }
+        startingIndex = (startingIndex + 1) % vertexShapes.length;
+        if(shapes.contains(vertexShapes[startingIndex])) {
+          break;
         }
       }
     }
+
+    // And finally, adding the shape groups associated with these shapes in order should get what we wanted.
+    for(Shape shape : shapesInOrderWithDuplicates) {
+      neighborCircle.addNeighborInOrder(shapesAndShapeGroups.get(shape));
+    }
   }
+
+  private <T> int lowestIndexAboveCollectionStartingAt(T[] array, Collection<T> members) {
+    int length = array.length;
+    int result = 0;
+    // Yup, these three loops could probably be compressed into one,
+    // at the cost of readability.
+    // I suspect there's no performance difference.
+
+    // Find the first instance of one of the members.
+    for(int i = 0; i < length; i++) {
+      if(members.contains(array[result])) {
+        break;
+      }
+      result = (result + 1) % length;
+    }
+    // Find the end of the streak of members.
+    for(int i = 0; i < length; i++) {
+      if(!members.contains(array[result])) {
+        break;
+      }
+      result = (result + 1) % length;
+    }
+    // Find the first place that isn't one of the members.
+    // It's possible that there are no places like that, in which case we'll return -1.
+    for(int i = 0; i < length; i++) {
+      if(!members.contains(array[result])) {
+        return result;
+      }
+      result = (result + 1) % length;
+    }
+    // Uh-oh
+    return -1;
+  }
+
+  private <T> int lowestIndexOfItemInCollection(T[] array, Collection<T> members) {
+    int length = array.length;
+    int result;
+    // Find an member from the collection in the array.
+    for(result = 0; result < length; result++) {
+      if(members.contains(array[result])) {
+        break;
+      }
+    }
+    // Find an item before this streak of collection members.
+    for(int i = 0; i < length; i++) {
+      result = (result - 1 + length) % length;
+      if(!members.contains(array[result])) {
+        return (result + 1) % length;
+      }
+    }
+    // Uh-oh.
+    return -1;
+  }
+
 
   private static void addAllNewGroupsFromVertex(Vertex vertex, ShapeGroupType groupType,
                                                 Map<Shape, ShapeGroup> shapesAndShapeGroups) {

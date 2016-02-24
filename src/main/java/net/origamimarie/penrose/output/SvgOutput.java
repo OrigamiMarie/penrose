@@ -34,7 +34,7 @@ public class SvgOutput {
     }
 
     Point[] minAndMax = new Point[2];
-    getMinAndMax(allThePointLists, minAndMax);
+    getMinAndMax(allThePointLists, minAndMax, true);
     Point min = minAndMax[0].times(scaleFactor);
     Point max = minAndMax[1].times(scaleFactor);
     max = max.minus(min);
@@ -58,7 +58,7 @@ public class SvgOutput {
           scaledPointsList.add(scaled);
           for (int j = 0; j < points.length; j++) {
             if (points[j] != null) {
-              scaled[j] = new Point(points[j].x * scaleFactor, points[j].y * scaleFactor);
+              scaled[j] = new Point(points[j].x * scaleFactor, points[j].y * -scaleFactor);
             }
           }
         }
@@ -69,7 +69,7 @@ public class SvgOutput {
       for(int i = 0; i < optionalColorList.size(); i++) {
         debuggingColorPointOffsets.add(new Point
                 (Math.cos(2*i*Math.PI/optionalColorList.size())*scaleFactor,
-                Math.sin(2*i*Math.PI/optionalColorList.size())*scaleFactor));
+                Math.sin(2*i*Math.PI/optionalColorList.size())*-scaleFactor));
       }
     }
 
@@ -80,7 +80,7 @@ public class SvgOutput {
         Point[] scaled = new Point[points.length];
         for(int j = 0; j < points.length; j++) {
           if(points[j] != null) {
-            scaled[j] = new Point(points[j].x * scaleFactor, points[j].y * scaleFactor);
+            scaled[j] = new Point(points[j].x * scaleFactor, points[j].y * -scaleFactor);
           }
         }
 
@@ -90,7 +90,7 @@ public class SvgOutput {
           if(optionalColorList != null) {
             // Get the overall boundaries.
             Point[] localMinAndMax = new Point[2];
-            getMinAndMax(Collections.singletonList(scaled), localMinAndMax);
+            getMinAndMax(Collections.singletonList(scaled), localMinAndMax, false);
             // Find the center.
             Point center = new Point((localMinAndMax[0].x + localMinAndMax[1].x)/2.0,
                     (localMinAndMax[0].y + localMinAndMax[1].y)/2.0);
@@ -132,7 +132,7 @@ public class SvgOutput {
       }
     }
     Point[] minAndMax = new Point[2];
-    getMinAndMax(scaledPoints, minAndMax);
+    getMinAndMax(scaledPoints, minAndMax, false);
     Point min = minAndMax[0];
     Point max = minAndMax[1];
     max = max.minus(min);
@@ -168,7 +168,7 @@ public class SvgOutput {
     }
   }
 
-  private static void getMinAndMax(List<Point[]> pointLists, Point[] minAndMax) {
+  private static void getMinAndMax(List<Point[]> pointLists, Point[] minAndMax, boolean flipY) {
     double minX = Integer.MAX_VALUE;
     double maxX = Integer.MIN_VALUE;
     double minY = Integer.MAX_VALUE;
@@ -177,9 +177,9 @@ public class SvgOutput {
       for(Point point : pointList) {
         if(point != null) {
           minX = Math.min(minX, point.x);
-          minY = Math.min(minY, point.y);
+          minY = Math.min(minY, flipY ? -point.y : point.y);
           maxX = Math.max(maxX, point.x);
-          maxY = Math.max(maxY, point.y);
+          maxY = Math.max(maxY, flipY ? -point.y : point.y);
         }
       }
     }

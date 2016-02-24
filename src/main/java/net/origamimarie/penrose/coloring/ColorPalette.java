@@ -4,10 +4,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.awt.Color;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
-import java.util.Set;
 
 @Slf4j
 public class ColorPalette implements Comparable<ColorPalette> {
@@ -47,6 +45,7 @@ public class ColorPalette implements Comparable<ColorPalette> {
 
   public Color useRandomColor() {
     if(colors.size() == 0) {
+      ColoredShapeGroup.dumpToFile(true, null);
       throw new IllegalArgumentException("There are no available colors to use");
     }
     ColorForPalette tempColorForPalette = colors.remove(random.nextInt(colors.size()));
