@@ -10,18 +10,11 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
 @Slf4j
 public class SvgOutput {
-
-  public static void pointListsToSvgFile(File file, List<Point[]> pointLists, double scaleFactor, Color color, double opacity, boolean outlines, Collection<Point> vertices, String ... optionalLinks) throws IOException {
-    BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-    pointListsToSvg(writer, pointLists, scaleFactor, color, opacity, outlines, vertices, optionalLinks);
-    writer.close();
-  }
 
   public static void shapeGroupsToSvgFile(File file, List<ColoredShapeGroup> coloredShapeGroups,
                                           double scaleFactor, boolean outlines,
@@ -84,9 +77,22 @@ public class SvgOutput {
           }
         }
 
+        Color outlineColor = Color.black;
+        if(optionalLinks != null && optionalLinks.length > 0) {
+          if(group.isIslandQueueJumpPriority()) {
+            outlineColor = Color.blue;
+          }
+          if(group.isLastPopQueueJumpPriority()) {
+            outlineColor = Color.red;
+          }
+          if(group.isIslandQueueJumpPriority() && group.isLastPopQueueJumpPriority()) {
+            outlineColor = Color.magenta;
+          }
+        }
+
         // This means we should draw the options, not the color.
         if(group.getColorPalette().getCurrentColor() == null) {
-          appendPolygon(writer, scaled, offset, Color.WHITE, opacity, outlines);
+          appendPolygon(writer, scaled, offset, Color.WHITE, opacity, outlines, outlineColor);
           if(optionalColorList != null) {
             // Get the overall boundaries.
             Point[] localMinAndMax = new Point[2];
@@ -108,7 +114,7 @@ public class SvgOutput {
 
         } else {
           // This means just draw the color.
-          appendPolygon(writer, scaled, offset, group.getColor(), opacity, outlines);
+          appendPolygon(writer, scaled, offset, group.getColor(), opacity, outlines, outlineColor);
         }
 
       }
@@ -117,46 +123,6 @@ public class SvgOutput {
 
     appendFooter(writer);
     writer.close();
-  }
-
-  public static void pointListsToSvg(Appendable ap, List<Point[]> pointLists, double scaleFactor,
-                                     Color color, double opacity, boolean outlines, Collection<Point> vertices, String ... links) throws IOException {
-    List<Point[]> scaledPoints = new ArrayList<>(pointLists.size());
-    for(Point[] points : pointLists) {
-      Point[] scaled = new Point[points.length];
-      scaledPoints.add(scaled);
-      for(int i = 0; i < points.length; i++) {
-        if(points[i] != null) {
-          scaled[i] = new Point(points[i].x * scaleFactor, points[i].y * -scaleFactor);
-        }
-      }
-    }
-    Point[] minAndMax = new Point[2];
-    getMinAndMax(scaledPoints, minAndMax, false);
-    Point min = minAndMax[0];
-    Point max = minAndMax[1];
-    max = max.minus(min);
-    Point offset = min.times(-1);
-
-    appendHeader(ap);
-    appendLinks(ap, links);
-    appendSvgHeader(ap, max);
-
-    float hue = 0.0f;
-    for(Point[] points : scaledPoints) {
-      if(points[0] != null && points[1] != null && points[2] != null && points[3] != null) {
-        appendPolygon(ap, points, offset, (color == null) ? Color.getHSBColor(hue, 1.0f, 1.0f) : color, opacity, outlines);
-        hue = hue + 0.025f;
-      }
-    }
-
-    if(vertices != null) {
-      for(Point point : vertices) {
-        appendVertex(ap, point, offset, scaleFactor, Color.red);
-      }
-    }
-
-    appendFooter(ap);
   }
 
   private static void appendLinks(Appendable ap, String ... links) throws IOException {
@@ -239,11 +205,21 @@ public class SvgOutput {
   }
 
   private static void appendPolygon(Appendable ap, Point[] points, Point offset,
-                                    Color color, double opacity, boolean outlines) throws IOException {
+                                    Color color, double opacity, boolean outlines,
+                                    Color outlineColor) throws IOException {
     String colorString = colorToHex(color);
     ap.append("  <g fill-rule=\"nonzero\" fill=\"").
             append(colorString);
-    ap.append(outlines ? "\" stroke=\"black\" stroke-width=\"0.5\" " : "\" ");
+    if(outlines) {
+
+      ap.append("\" stroke=\"").
+              append(colorToHex(outlineColor)).
+              append("\" stroke-width=\"").
+              append(outlineColor == Color.black ? "0" : "1").
+              append(".5\" ");
+    } else {
+      ap.append("\" ");
+    }
     ap.append("fill-opacity=\"").append(String.valueOf(opacity)).append("\" >\n");
     appendPath(ap, points, offset);
     ap.append("  </g>\n");
@@ -258,19 +234,6 @@ public class SvgOutput {
     Point point = points[0];
     ap.append(String.valueOf(point.x + offset.x)).append(",").append(String.valueOf(point.y + offset.y)).append(" z ");
     ap.append("\" />\n");
-  }
-
-  private static void appendVertex(Appendable ap, Point point, Point offset, double scaleFactor, Color color) throws IOException {
-    String colorString = colorToHex(color);
-    ap.append("<circle cx=\"").
-            append(String.valueOf(scaleFactor * point.x + offset.x)).
-            append("\" cy=\"").
-            append(String.valueOf(-scaleFactor * point.y + offset.y)).
-            append("\" r=\"").
-            append(String.valueOf(scaleFactor/4)).
-            append("\" stroke=\"black\" stroke-width=\"0.25\" fill=\"").
-            append(colorString).
-            append("\" fill-opacity=\"0.3\" />");
   }
 
   private static String colorToHex(Color c) {

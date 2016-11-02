@@ -72,7 +72,7 @@ public class GroupNeighborCircle {
 
   // If we're a bridge, there may be an island adjacent.
   // An island consists of an isolated cluster of null-colored shapes
-  // that are at most 3 hops from each other.
+  // that are at most 4 hops from each other.
   // Anything larger is too big to worry about.
   public Set<ShapeGroup> getNeighboringIsland() {
     if(!isBridge()) {
@@ -91,7 +91,7 @@ public class GroupNeighborCircle {
         // This can go a few hops out.
         Set<ShapeGroup> thisHopSeeds = new HashSet<>(islandSeedNeighbors);
         Set<ShapeGroup> nextHopSeeds = new HashSet<>();
-        for(int hops = 0; hops < 3; hops++) {
+        for(int hops = 0; hops < 4; hops++) {
           // This dodges an interesting, strange concurrent modification exception.
           for(ShapeGroup seed : new ArrayList<>(thisHopSeeds)) {
             proposedIsland.add(seed);

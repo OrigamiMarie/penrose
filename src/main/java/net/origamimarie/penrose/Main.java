@@ -1,9 +1,6 @@
 package net.origamimarie.penrose;
 
 import lombok.extern.slf4j.Slf4j;
-import net.origamimarie.penrose.coloring.BlacklistColor;
-import net.origamimarie.penrose.coloring.ColorForPalette;
-import net.origamimarie.penrose.coloring.ColorPalette;
 import net.origamimarie.penrose.coloring.ColoredShapeGroup;
 import net.origamimarie.penrose.coloring.ColoringScheme;
 import net.origamimarie.penrose.coloring.ShapeGroup;
@@ -13,10 +10,8 @@ import net.origamimarie.penrose.generation.Point;
 import net.origamimarie.penrose.generation.TilingGenerator;
 import net.origamimarie.penrose.output.SvgOutput;
 
-import java.awt.Color;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -33,8 +28,8 @@ public class Main {
   }
 
   private static void getToException() throws IOException {
-    xHigh = 60;
-    yHigh = 60;
+    xHigh = 30;
+    yHigh = 30;
     for(int i = 0; i < 100; i++) {
       try {
         makePrettyThing();
@@ -50,13 +45,15 @@ public class Main {
     Point high = new Point(xHigh, yHigh);
     TilingGenerator generator = new TilingGenerator(low, high);
     File file = new File("/Users/mariep/personalcode/penrose/colors.svg");
-    Collection<ShapeGroup> shapeGroups = ShapeGroup.generateShapeGroups(generator.getAllVertices(), ShapeGroupType.SINGLE_SHAPES, low, high);
+    Collection<ShapeGroup> shapeGroups = ShapeGroup.generateShapeGroups(generator.getAllVertices(),
+            ShapeGroupType.SINGLE_SHAPES, ShapeGroup.NeighborsType.VERTICES, low, high);
     if(shapeGroups.size() > 4) {
       try {
-        List<ColoredShapeGroup> coloredShapeGroup = ColoredShapeGroup.colorShapeGroups(shapeGroups, ColoringScheme.RAINBOW_32_FUZZY_ALTERNATING);
+        List<ColoredShapeGroup> coloredShapeGroup = ColoredShapeGroup.colorShapeGroups(shapeGroups,
+                ColoringScheme.RAINBOW_32_FUZZY_SIMILAR);
         log.debug("dumping {} shapeGroups to file", coloredShapeGroup.size());
         ColoredShapeGroup.resetFileNumber();
-        SvgOutput.shapeGroupsToSvgFile(file, coloredShapeGroup, 10, true, null, 0.4);
+        SvgOutput.shapeGroupsToSvgFile(file, coloredShapeGroup, 5, false, null, 0.7);
       } catch (Exception e) {
         ColoredShapeGroup.dumpToFile(true, null);
         log.debug("", e);

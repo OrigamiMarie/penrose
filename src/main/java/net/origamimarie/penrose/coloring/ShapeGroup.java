@@ -83,7 +83,10 @@ public class ShapeGroup {
   }
 
   // Keep only the ShapeGroups that have at least one point inside the rectangle.
-  public static Collection<ShapeGroup> generateShapeGroups(Collection<Vertex> vertices, ShapeGroupType groupType, Point low, Point high) {
+  public static Collection<ShapeGroup> generateShapeGroups(Collection<Vertex> vertices,
+                                                           ShapeGroupType groupType,
+                                                           NeighborsType neighborType,
+                                                           Point low, Point high) {
     Map<Shape, ShapeGroup> shapesAndShapeGroups = new HashMap<>();
     // Get all the shape groups.
     for(Vertex vertex : vertices) {
@@ -92,7 +95,7 @@ public class ShapeGroup {
 
     // Add all of the shape group connections.
     for(ShapeGroup shapeGroup : shapesAndShapeGroups.values()) {
-      shapeGroup.populateNeighbors(shapesAndShapeGroups);
+      shapeGroup.populateNeighbors(shapesAndShapeGroups, neighborType);
     }
 
     Set<ShapeGroup> set = new HashSet<>();
@@ -135,7 +138,8 @@ public class ShapeGroup {
   // which is to say that each vertex represents just one place on the edge of the group,
   // the group doesn't exist in two separate parts connected by their points.
   // The possibilities on non-contiguous shapeGroups just give me a headache.
-  public void populateNeighbors(Map<Shape, ShapeGroup> shapesAndShapeGroups) {
+  public void populateNeighbors(Map<Shape, ShapeGroup> shapesAndShapeGroups,
+                                NeighborsType neighborsType) {
     // This gets meta pretty fast.
     // Hooo boy.
     // So fundamentally we need to walk around the shapeGroup and pick up neighbors as we go.
@@ -184,18 +188,28 @@ public class ShapeGroup {
     for(Vertex vertex : verticesInOrder) {
       Shape[] vertexShapes = vertex.getWedges();
       // Find out where our shapes end, going around this vertex.
+      // Then add one, and that's where to start getting neighbors.
       int startingIndex = lowestIndexAboveCollectionStartingAt(vertex.getWedges(), shapes);
-      // Now we have the counterclockwise start of shapes just after our group's shapes.
-      // Add until we get back around to our group's shapes.
-      // Since the eventual shapeGroups that these will turn into will be going into a set,
-      // don't worry that there will be overlap with the previous and next vertices' shapes.
-      for(int i = 0; i < vertexShapes.length; i++) {
+      // What kind of neighbors do we want to get?
+      if(neighborsType == NeighborsType.EDGES) {
+        // Just the first neighbor.  That should be the one right next to us.
         if(vertexShapes[startingIndex] != null) {
           shapesInOrderWithDuplicates.add(vertexShapes[startingIndex]);
         }
-        startingIndex = (startingIndex + 1) % vertexShapes.length;
-        if(shapes.contains(vertexShapes[startingIndex])) {
-          break;
+      } else if(neighborsType == NeighborsType.VERTICES) {
+        // Now we have the counterclockwise start of shapes just after our group's shapes.
+        // Add until we get back around to our group's shapes.
+        // Since the eventual shapeGroups that these will turn into will be going into a set,
+        // don't worry that there will be overlap with the previous and next vertices' shapes.
+
+        for(int i = 0; i < vertexShapes.length; i++) {
+          if(vertexShapes[startingIndex] != null) {
+            shapesInOrderWithDuplicates.add(vertexShapes[startingIndex]);
+          }
+          startingIndex = (startingIndex + 1) % vertexShapes.length;
+          if(shapes.contains(vertexShapes[startingIndex])) {
+            break;
+          }
         }
       }
     }
@@ -329,6 +343,11 @@ public class ShapeGroup {
   public enum ShapeGroupType {
     STARS_AND_BALLS,
     SINGLE_SHAPES
+  }
+
+  public enum NeighborsType {
+    EDGES,
+    VERTICES
   }
 
 }

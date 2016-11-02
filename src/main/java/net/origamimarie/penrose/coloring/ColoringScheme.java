@@ -19,7 +19,7 @@ public enum ColoringScheme {
     RAINBOW_32_FUZZY_ALTERNATING.colorsForPalette = new ArrayList<>();
     for(int i = 0; i < colors32.size(); i++) {
       Color color = colors32.get(i);
-      List<Color> dissimilarColors = copyOutItems(colors32, i+4, 19);
+      List<Color> dissimilarColors = copyOutItems(colors32, i+6, 15);
       RAINBOW_32_FUZZY_ALTERNATING.colorsForPalette.add(new WhitelistColor(color, dissimilarColors));
     }
     // RAINBOW_32_FUZZY_SIMILAR initialization

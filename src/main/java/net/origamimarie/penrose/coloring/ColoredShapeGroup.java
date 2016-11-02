@@ -26,15 +26,15 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
 
 
   private static String mostOfFileName = "/Users/mariep/personalcode/frame.noindex/frame";
-  private static int fileNumberMod = 100000;
+  private static int fileNumberMod = 1;
   private static int fileNumberThreshold = 500000000;
   private static AtomicInteger fileNumber = new AtomicInteger(0);
   private ColorPalette colorPalette;
   private ShapeGroup shapeGroup;
 
   private double cachedNullNeighborRatio = 1;
-  private boolean queueJumpPriority = false;
-  private long framePopCount = 0;
+  private boolean islandQueueJumpPriority = false;
+  private boolean lastPopQueueJumpPriority = false;
 
   public ColoredShapeGroup(ShapeGroup shapeGroup, ColorPalette colorPalette) {
     this.shapeGroup = shapeGroup;
@@ -52,17 +52,16 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
 
   @Override
   public int compareTo(ColoredShapeGroup csg) {
-    if(queueJumpPriority != csg.queueJumpPriority) {
-      return queueJumpPriority ? -1 : 1;
+    if(islandQueueJumpPriority != csg.islandQueueJumpPriority) {
+      return islandQueueJumpPriority ? -1 : 1;
+    }
+    if(lastPopQueueJumpPriority != csg.lastPopQueueJumpPriority) {
+      return lastPopQueueJumpPriority ? -1 : 1;
     }
     int paletteComparison = this.colorPalette.compareTo(csg.colorPalette);
     if(paletteComparison != 0) {
       return paletteComparison;
     }
-    /*int frameComparison = -Long.compare(framePopCount, csg.framePopCount);
-    if(frameComparison != 0) {
-      return frameComparison;
-    }*/
     int cachedNullNeighborComparison = Double.compare(cachedNullNeighborRatio, csg.cachedNullNeighborRatio);
     if(cachedNullNeighborComparison != 0) {
       return cachedNullNeighborComparison;
@@ -117,6 +116,8 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
     List<ColoredShapeGroup> shapesThatHaveBeenColored = new ArrayList<>(shapeGroups.size());
     while(shapeGroupQueue.size() > 0) {
       ColoredShapeGroup tempShapeGroup = shapeGroupQueue.remove();
+      // Now that it's being colored, it doesn't need priority.
+      tempShapeGroup.lastPopQueueJumpPriority = false;
       Color tempColor = tempShapeGroup.useRandomColor();
 
       dumpToFile(false, Collections.singletonList(tempShapeGroup));
@@ -131,10 +132,10 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
         List<ColoredShapeGroup> islandPiecesForFrame = new ArrayList<>(island.size());
         for(ShapeGroup islandGroup : island) {
           // No need to requeue it if it's already high priority.
-          if(!islandGroup.getColoredShapeGroup().queueJumpPriority) {
+          if(!islandGroup.getColoredShapeGroup().islandQueueJumpPriority) {
             islandPiecesForFrame.add(islandGroup.getColoredShapeGroup());
             shapeGroupQueue.remove(islandGroup.getColoredShapeGroup());
-            islandGroup.getColoredShapeGroup().queueJumpPriority = true;
+            islandGroup.getColoredShapeGroup().islandQueueJumpPriority = true;
             if(islandGroup.getColoredShapeGroup().getColor() != null) {
               log.debug("Hey, this island shape has color in it!");
             }
@@ -168,11 +169,15 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
           // Woops.  We've treed ourselves.  Time to pop until we have a workable solution.
           if(coloredShapeGroupWillFail(neighborGroup.getColoredShapeGroup())) {
             do {
-              // This means we're not on the first go-around, where we didn't want to reset anyway.
               if(deColoredFrame != null) {
+                // This means we're not on the first go-around, so we should reset colors.
                 deColoredFrame.groupThatGotColored.colorPalette.resetAttemptedColors();
               }
-              deColoredFrame = popStackOntoQueue(coloringFrameStack, shapeGroupQueue);
+              // If deColoredFrame is null, we're popping the last in a series of bad choices.
+              // It's likely that we should prioritize this item higher so that it can get tried
+              // earlier next round.
+              deColoredFrame = popStackOntoQueue(coloringFrameStack, shapeGroupQueue,
+                      deColoredFrame == null);
               dumpToFile(false, null);
               checkFirstGroupAndThrow(deColoredFrame.groupThatGotColored, firstGroup);
               shapesThatHaveBeenColored.remove(deColoredFrame.groupThatGotColored);
@@ -227,10 +232,11 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
   // having their color counts changed (because heap-based priority queues act weird
   // when items in the queue have their priority levels change).
   private static ColoringFrame popStackOntoQueue(Stack<ColoringFrame> frameStack,
-                                                 Queue<ColoredShapeGroup> queue) {
+                                                 Queue<ColoredShapeGroup> queue,
+                                                 boolean lastPopQueueJumpPriority) {
     ColoringFrame frame = frameStack.pop();
     frame.groupThatGotColored.colorPalette.unsetColor();
-    frame.groupThatGotColored.framePopCount++;
+    frame.groupThatGotColored.setLastPopQueueJumpPriority(lastPopQueueJumpPriority);
     queue.add(frame.groupThatGotColored);
     // Give the colors back to these shapeGroups, because using the color in question was a bad idea.
     // I think something is going wrong with the hashing, or something like that.
@@ -251,7 +257,7 @@ public class ColoredShapeGroup implements Comparable<ColoredShapeGroup> {
     if(frame.bridgeCreation) {
       for(ColoredShapeGroup group : frame.islandShapesThatJumpedTheQueue) {
         queue.remove(group);
-        group.setQueueJumpPriority(false);
+        group.setIslandQueueJumpPriority(false);
         queue.add(group);
       }
     }
